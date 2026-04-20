@@ -1,0 +1,61 @@
+.env
+.idea/
+__pycache__/
+# --- Python ---
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+*.pkl
+*.db
+*.sqlite3
+
+# --- Virtual Environments ---
+env/
+venv/
+ENV/
+.venv/
+.ENV/
+
+# --- Configuration & Secrets ---
+*.env
+.env.*
+*.ini
+*.cfg
+config.json
+settings.json
+credentials.json
+token.txt
+
+# --- Logs & Debug ---
+*.log
+logs/
+debug.log
+
+# --- IDE / Editor folders ---
+.vscode/
+.idea/
+*.iml
+
+# --- OS files ---
+.DS_StoThumbs.db
+
+# --- Byte-compiled files ---
+*.so
+
+# --- PyInstaller ---
+dist/
+build/
+*.spec
+
+# --- Jupyter / IPython ---
+.ipynb_checkpoints
+
+# --- Cache ---
+.cache/
+.pytest_cache/
+
+# --- Others ---
+__pycache__/
+*.bak
+*.swp

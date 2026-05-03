@@ -7,6 +7,9 @@ import logging, re
 from telegram import Update, LabeledPrice
 from telegram.ext import ContextTypes
 
+from telegram import InlineKeyboardButton, InlineKeyboardMarkup, ReplyKeyboardMarkup, KeyboardButton
+
+
 from config import (
     PAYMENT_PROVIDER_TOKEN, MESSAGES,
     EGG_COST_1, EGG_COST_2, NAMING_COST,
@@ -184,6 +187,63 @@ async def handle_text_and_callback(update: Update, context: ContextTypes.DEFAULT
         db.set_bot_blocked(user_id, False)
         chat = query.message.chat if query.message else None
         in_group = chat and chat.type in ('group', 'supergroup')
+        
+        if data.startswith("transfer_"):
+            parts = data.split('_', 2)   # transfer_confirm_<id> or transfer_cancel_<id>
+            if len(parts) < 3:
+                await query.answer("خطا")
+                return
+            action = parts[1]
+            transfer_id = parts[2]
+            transfers = context.bot_data.get('transfers', {})
+            info = transfers.get(transfer_id)
+            if not info:
+                await query.answer("درخواست منقضی شده یا وجود ندارد.")
+                return
+            if query.from_user.id != info['sender_id']:
+                await query.answer("⛔ این دکمه متعلق به شما نیست.", show_alert=True)
+                return
+
+            if action == 'cancel':
+                del transfers[transfer_id]
+                await query.edit_message_text("❌ انتقال لغو شد.", reply_markup=None)
+            elif action == 'confirm':
+                sender_id = info['sender_id']
+                receiver_id = info['receiver_id']
+                amount = info['amount']
+                sender = db.get_user(sender_id)
+                if not sender or sender['points'] < amount:
+                    await query.edit_message_text("❌ موجودی کافی نیست. انتقال لغو شد.", reply_markup=None)
+                    del transfers[transfer_id]
+                    return
+                success, remaining = db.deduct_points(sender_id, amount)
+                if not success:
+                    await query.edit_message_text("❌ خطا در انتقال.", reply_markup=None)
+                    del transfers[transfer_id]
+                    return
+                db.add_points(receiver_id, amount)
+                # Log events
+                db.log_event(sender_id, 'transfer_out',
+                             points_before=sender['points'], points_after=remaining,
+                             extra={'to': receiver_id, 'amount': amount})
+                db.log_event(receiver_id, 'transfer_in',
+                             points_before=db.get_user(receiver_id)['points'] - amount,
+                             points_after=db.get_user(receiver_id)['points'],
+                             extra={'from': sender_id, 'amount': amount})
+                await query.edit_message_text(
+                    f"✅ انتقال با موفقیت انجام شد!\n{format_number(amount)} امتیاز به @{info['receiver_username']} ارسال شد.",
+                    reply_markup=None)
+                # Notify receiver in DM
+                try:
+                    await context.bot.send_message(
+                        receiver_id,
+                        f"💰 شما {format_number(amount)} امتیاز از @{query.from_user.username or query.from_user.id} دریافت کردید!"
+                    )
+                except Exception:
+                    pass
+                del transfers[transfer_id]
+            await query.answer()
+            return
 
         # ttt_ callbacks work everywhere (game is played in DM anyway)
         if data.startswith("ttt_"):
@@ -411,6 +471,8 @@ async def handle_text_and_callback(update: Update, context: ContextTypes.DEFAULT
                 )
             else:
                 await query.edit_message_text("🐾 شما هنوز هیچ حیوانی ندارید!", reply_markup=get_back_to_menu_keyboard())
+                
+    
 
     else:
         if not update.message:
@@ -462,11 +524,24 @@ async def handle_text_and_callback(update: Update, context: ContextTypes.DEFAULT
                     f"⏳ صبر کنید! {mins} دقیقه و {secs} ثانیه تا استفاده بعدی باقی مانده."
                 )
             return
-        # ===== پایان Jik Jik =====
+        
+        if update.message and update.message.text:
+            user_id_temp = update.effective_user.id
+            animals_owned = db.get_user_animals(user_id_temp)
+            if animals_owned:
+                msg_norm = normalize(update.message.text.strip())
+                for animal in animals_owned:
+                    if animal['name'] and normalize(animal['name']) == msg_norm:
+                        emoji = "🐔" if animal['animal_type'] == 'chicken' else "🐓"
+                        await update.message.reply_text(
+                            f"{emoji} سلام صاحب من! من **{animal['name']}** هستم.",
+                            parse_mode="Markdown"
+                        )
+                        return
 
+        # ==================== Private Chat Only Features ====================
 
         if not _is_private(update):
-            #db.get_or_create_user(user_id, user.username, user.first_name, user.last_name)
             return
         
 
@@ -570,3 +645,4 @@ async def handle_text_and_callback(update: Update, context: ContextTypes.DEFAULT
                 "💰 لطفاً یکی از پکیجها را انتخاب کنید:",
                 reply_markup=get_payment_keyboard()
             )
+        

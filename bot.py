@@ -8,6 +8,16 @@ from telegram.ext import (
     MessageHandler, PreCheckoutQueryHandler, filters
 )
 
+
+from telegram import Update, LabeledPrice
+
+
+from telegram import InlineKeyboardButton, InlineKeyboardMarkup
+from utils import format_number
+from telegram.ext import ContextTypes
+
+from uuid import uuid4
+
 from config import (
     BOT_TOKEN, BALE_API_BASE_URL, BALE_FILE_BASE_URL,
     AUTO_JIK_UNLOCK_10MIN, AUTO_JIK_UNLOCK_5MIN,
@@ -18,6 +28,7 @@ from Db import db
 from keyboards import main_menu_keyboard
 from payment import handle_text_and_callback, handle_pre_checkout_query
 from tictactoe_handlers import handle_tictactoe_command, handle_start_join
+from .payment import transfer_command
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -167,6 +178,62 @@ async def start(update, context):
             parse_mode="Markdown"
         )
 
+async def transfer_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+        user = update.effective_user
+        args = context.args
+        if not args or len(args) < 2:
+            await update.message.reply_text("📝 نحوه استفاده:\n`/transfer @username 1000`", parse_mode="Markdown")
+            return
+
+        target_username = args[0].lstrip('@')
+        try:
+            amount = int(args[1])
+        except ValueError:
+            await update.message.reply_text("❌ مقدار باید عدد باشد.")
+            return
+        if amount <= 0:
+            await update.message.reply_text("❌ مقدار باید مثبت باشد.")
+            return
+
+        sender = db.get_user(user.id)
+        if not sender:
+            await update.message.reply_text("⛔ ابتدا بات را استارت کنید.")
+            return
+        target = db.get_user_by_username(target_username)
+        if not target:
+            await update.message.reply_text(f"❌ کاربر @{target_username} یافت نشد (باید بات را استارت کرده باشد).")
+            return
+        if target['user_id'] == user.id:
+            await update.message.reply_text("⛔ نمی‌توانید به خودتان انتقال دهید.")
+            return
+        if sender['points'] < amount:
+            await update.message.reply_text(f"❌ موجودی کافی نیست. موجودی شما: {format_number(sender['points'])}")
+            return
+
+        # Store temporary request
+        transfer_id = uuid4().hex[:8]
+        context.bot_data.setdefault('transfers', {})[transfer_id] = {
+            'sender_id': user.id,
+            'receiver_id': target['user_id'],
+            'receiver_username': target_username,
+            'amount': amount,
+            'chat_id': update.effective_chat.id,
+        }
+
+        keyboard = InlineKeyboardMarkup([
+            [
+                InlineKeyboardButton("✅ تأیید", callback_data=f"transfer_confirm_{transfer_id}"),
+                InlineKeyboardButton("❌ لغو", callback_data=f"transfer_cancel_{transfer_id}")
+            ]
+        ])
+        await update.message.reply_text(
+            f"📤 انتقال {format_number(amount)} امتیاز به @{target_username}\n"
+            f"موجودی فعلی: {format_number(sender['points'])}\n"
+            f"پس از انتقال: {format_number(sender['points'] - amount)}",
+            reply_markup=keyboard
+        )
+
+
 
 # ==================== Main ====================
 
@@ -183,16 +250,18 @@ def main():
 
     application.add_handler(CommandHandler("start", start))
     application.add_handler(CommandHandler("tictactoe", handle_tictactoe_command))
+    application.add_handler(CommandHandler("xo", handle_tictactoe_command))
 
     application.add_handler(MessageHandler(filters.SUCCESSFUL_PAYMENT, handle_text_and_callback))
     application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_text_and_callback))
     application.add_handler(CallbackQueryHandler(handle_text_and_callback))
     application.add_handler(PreCheckoutQueryHandler(handle_pre_checkout_query))
+    application.add_handler(CommandHandler("transfer", transfer_command))
 
     # Auto Jik Jik background jobs
-    job_queue = application.job_queue
-    job_queue.run_repeating(auto_jik_job, interval=AUTO_JIK_INTERVAL_10MIN, first=60)
-    job_queue.run_repeating(auto_jik_fast_job, interval=AUTO_JIK_INTERVAL_5MIN, first=60)
+    # job_queue = application.job_queue
+    # job_queue.run_repeating(auto_jik_job, interval=AUTO_JIK_INTERVAL_10MIN, first=60)
+    # job_queue.run_repeating(auto_jik_fast_job, interval=AUTO_JIK_INTERVAL_5MIN, first=60)
 
     print("🚀 بات Jik Jik با موفقیت شروع شد...")
     application.run_polling()

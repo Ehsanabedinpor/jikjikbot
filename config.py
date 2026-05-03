@@ -100,9 +100,25 @@ Simply type "Jik Jik" to earn 30 points!
 *Payment:*
 /pay - Buy points with real money
 
-*Admin:*
-/broadcast < @ehsanabedin  @parisaw_pr > - Send message to all users (admin only)
-/stats - View bot statistics (admin only)
+*انتقال امتیاز:*
+/transfer @username <amount> - Transfer points to another user
+(Both users must be registered with the bot)
+
+*فیچرهای خصوصی:*
+🐔 Call your animal's name - they will greet you!
+🐔 Name your animals in the menu
+📊 Check your progress anytime
+
+*نکات مهم:*
+• 3000 pts: Auto Jik Jik (10 min)
+• 6000 pts: Tic Tac Toe  
+• 9000 pts: Auto Jik Jik (5 min)
+• 30000 pts: Breeding
+
+*بازی در گروه:*
+/tictactoe <bet> @username - Start XO game
+/xo <bet> @username - Shortcut for tictactoe
+/transfer @username <amount> - Transfer points
 """,
     "not_enough_points": "❌ You don't have enough points! You need {needed} points but have {have} points.",
     "cooldown": "⏳ Please wait {remaining} seconds before using Jik Jik again!",
